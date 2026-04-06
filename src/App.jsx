@@ -24,9 +24,9 @@ function parseFleekCSV(text) {
     if(lines.length<2) return [];
     const h=lines[0].replace(/^\uFEFF/,"").split(",").map(x=>x.trim().replace(/^"|"$/g,""));
     
-    // Support both Fleek format and self-export format
+    // Support Fleek ("Exercise"), Strong/Hevy ("Exercise Name"), self-export
     const di = h.findIndex(x=>x==="Date");
-    const ei = h.findIndex(x=>x==="Exercise");
+    const ei = h.findIndex(x=>x==="Exercise Name" || x==="Exercise");
     const wi = h.findIndex(x=>x.includes("Weight"));
     const ri = h.findIndex(x=>x==="Reps");
     
@@ -41,11 +41,11 @@ function parseFleekCSV(text) {
       let dk;
       try {
         const raw = c[di].trim();
-        // Handle various date formats
+        // Handle various date formats: YYYY-MM-DD, YYYY-MM-DD HH:MM:SS, ISO with T
         if(raw.match(/^\d{4}-\d{2}-\d{2}$/)) {
-          dk = raw; // Already YYYY-MM-DD
-        } else if(raw.includes("T")) {
-          dk = raw.split("T")[0]; // ISO format
+          dk = raw;
+        } else if(raw.match(/^\d{4}-\d{2}-\d{2}[\sT]/)) {
+          dk = raw.substring(0, 10);
         } else {
           const dt = new Date(raw);
           if(isNaN(dt)) continue;
