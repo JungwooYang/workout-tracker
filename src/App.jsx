@@ -23,7 +23,7 @@ function parseFleekCSV(text) {
     const lines = text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
     if(lines.length<2) return [];
     const h=lines[0].replace(/^\uFEFF/,"").split(",").map(x=>x.trim().replace(/^"|"$/g,""));
-    
+    alert("헤더: " + JSON.stringify(h.slice(0,5)));
     // Support Fleek ("Exercise"), Strong/Hevy ("Exercise Name"), self-export
     const di = h.findIndex(x=>x==="Date");
     const ei = h.findIndex(x=>x==="Exercise Name" || x==="Exercise");
