@@ -35,7 +35,12 @@ function parseFleekCSV(text) {
     const byD={};
     for(let i=1;i<lines.length;i++){
       // Handle quoted CSV fields
-      const c=lines[i].match(/(".*?"|[^,]*)/g)?.map(x=>x.replace(/^"|"$/g,"").trim()) || lines[i].split(",");
+      let c;
+      if(lines[i].startsWith('"')) {
+        c = lines[i].split('","').map(x=>x.replace(/^"|"$/g,"").trim());
+      } else {
+        c = lines[i].split(",").map(x=>x.trim());
+      }
       if(!c[di] || !c[ei]) continue;
       
       let dk;
