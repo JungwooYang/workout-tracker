@@ -19,21 +19,58 @@ const fmtTimer = (s) => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%
 
 // ─── CSV ───
 function parseFleekCSV(text) {
-  const lines = text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
-  if(lines.length<2) return [];
-  const h=lines[0].replace(/^\uFEFF/,"").split(",");
-  const di=h.indexOf("Date"),ei=h.indexOf("Exercise"),wi=h.findIndex(x=>x.includes("Weight")),ri=h.indexOf("Reps");
-  const byD={};
-  for(let i=1;i<lines.length;i++){
-    const c=lines[i].split(","); const dk=toKey(c[di]); const ex=c[ei]?.trim(); if(!ex)continue;
-    if(!byD[dk])byD[dk]={};
-    if(!byD[dk][ex])byD[dk][ex]=[];
-    byD[dk][ex].push({weight:parseFloat(c[wi])||0,reps:parseInt(c[ri])||0,done:true});
+  try {
+    const lines = text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+    if(lines.length<2) return [];
+    const h=lines[0].replace(/^\uFEFF/,"").split(",").map(x=>x.trim().replace(/^"|"$/g,""));
+    
+    // Support both Fleek format and self-export format
+    const di = h.findIndex(x=>x==="Date");
+    const ei = h.findIndex(x=>x==="Exercise");
+    const wi = h.findIndex(x=>x.includes("Weight"));
+    const ri = h.findIndex(x=>x==="Reps");
+    
+    if(di===-1||ei===-1) return [];
+    
+    const byD={};
+    for(let i=1;i<lines.length;i++){
+      // Handle quoted CSV fields
+      const c=lines[i].match(/(".*?"|[^,]*)/g)?.map(x=>x.replace(/^"|"$/g,"").trim()) || lines[i].split(",");
+      if(!c[di] || !c[ei]) continue;
+      
+      let dk;
+      try {
+        const raw = c[di].trim();
+        // Handle various date formats
+        if(raw.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          dk = raw; // Already YYYY-MM-DD
+        } else if(raw.includes("T")) {
+          dk = raw.split("T")[0]; // ISO format
+        } else {
+          const dt = new Date(raw);
+          if(isNaN(dt)) continue;
+          dk = toKey(dt);
+        }
+      } catch { continue; }
+      
+      const ex = c[ei]?.trim();
+      if(!ex) continue;
+      if(!byD[dk]) byD[dk]={};
+      if(!byD[dk][ex]) byD[dk][ex]=[];
+      byD[dk][ex].push({
+        weight: wi>=0 ? (parseFloat(c[wi])||0) : 0,
+        reps: ri>=0 ? (parseInt(c[ri])||0) : 0,
+        done: true
+      });
+    }
+    return Object.entries(byD).map(([date,exs])=>({
+      id:uid(),date,duration:0,
+      exercises:Object.entries(exs).map(([name,sets])=>({name,sets}))
+    }));
+  } catch(err) {
+    console.error("CSV parse error:", err);
+    return [];
   }
-  return Object.entries(byD).map(([date,exs])=>({
-    id:uid(),date,duration:0,
-    exercises:Object.entries(exs).map(([name,sets])=>({name,sets}))
-  }));
 }
 
 function exportCSV(workouts) {
@@ -111,7 +148,7 @@ export default function App() {
   const [elapsed, setElapsed] = useState(0);
 
   // Load
-  useEffect(()=>{(() => {
+  useEffect(()=>{(()=>{
     const w=ST.get("workouts"); if(w)setWorkouts(w);
     const r=ST.get("routines"); if(r)setRoutines(r);
     setLoaded(true);
@@ -180,18 +217,25 @@ export default function App() {
   // Import
   const handleImport = (e) => {
     const f=e.target.files[0]; if(!f)return;
+    setImportMsg("읽는 중...");
     const r=new FileReader();
     r.onload=(ev)=>{
-      const parsed=parseFleekCSV(ev.target.result);
-      if(!parsed.length){setImportMsg("파싱 실패");return;}
-      setWorkouts(p=>{
-        const ex=new Set(p.map(w=>w.date));
-        const nw=parsed.filter(w=>!ex.has(w.date));
-        setImportMsg(`${nw.length}개 세션 추가 (${parsed.length-nw.length}개 중복 스킵)`);
-        return [...p,...nw].sort((a,b)=>a.date.localeCompare(b.date));
-      });
+      try {
+        const text = ev.target.result;
+        const parsed=parseFleekCSV(text);
+        if(!parsed.length){setImportMsg("파싱 실패 — CSV 형식을 확인하세요");return;}
+        setWorkouts(p=>{
+          const ex=new Set(p.map(w=>w.date));
+          const nw=parsed.filter(w=>!ex.has(w.date));
+          setImportMsg(`${nw.length}개 세션 추가 (${parsed.length-nw.length}개 중복 스킵)`);
+          return [...p,...nw].sort((a,b)=>a.date.localeCompare(b.date));
+        });
+      } catch(err) {
+        setImportMsg("오류: " + err.message);
+      }
     };
-    r.readAsText(f); e.target.value="";
+    r.onerror=()=>{ setImportMsg("파일 읽기 실패"); };
+    r.readAsText(f, "UTF-8");
   };
 
   const filtered = allExNames.filter(n=>n.toLowerCase().includes(exSearch.toLowerCase()));
